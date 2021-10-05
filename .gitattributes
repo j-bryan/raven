@@ -1,7 +1,5 @@
-crow/contrib/* linguist-vendored
 crow/contrib/include/Eigen/* linguist-vendored
 crow/contrib/include/boost/* linguist-vendored
-include/contrib/* linguist-vendored
 include/contrib/AMSC/* linguist-vendored
 include/contrib/ngl/* linguist-vendored
 src/contrib/* linguist-vendored
