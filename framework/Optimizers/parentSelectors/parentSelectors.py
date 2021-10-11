@@ -92,7 +92,7 @@ def tournamentSelection(population,**kwargs):
   nParents= kwargs['nParents']
   pop = population
   popSize = population.values.shape[0]
-
+  nParents = popSize//2 -1 if nParents >= popSize/2 else nParents
   if 'rank' in kwargs:
     # the key rank is used in multi-objective optimization where rank identifies which front the point belongs to
     rank = kwargs['rank']
