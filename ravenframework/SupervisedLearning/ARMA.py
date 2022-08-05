@@ -289,6 +289,8 @@ class ARMA(SupervisedLearning):
     self.numCycles = None # if self.multicycle, this is the number of cycles per sample
     self.growthFactors = collections.defaultdict(list) # by target, this is how to scale the signal over successive cycles
 
+    self.cdfType = 'KDE'
+
 
   def _handleInput(self, paramInput):
     """
@@ -621,9 +623,15 @@ class ARMA(SupervisedLearning):
       # if target correlated with the zero-filter target, truncate the training material now?
       timeSeriesData = targetVals[:,t]
       self.raiseADebug('... analyzing ARMA properties for target "{}" ...'.format(target))
-      self.cdfParams[target] = self._trainCDF(timeSeriesData, binOps=2)
-      # normalize data
-      normed = self._normalizeThroughCDF(timeSeriesData, self.cdfParams[target])
+      if self.cdfType == 'ECDF' or target == 'SOLAR':
+        self.cdfParams[target] = self._trainCDF(timeSeriesData, binOps=2)
+        # normalize data
+        normed = self._normalizeThroughCDF(timeSeriesData, self.cdfParams[target])
+      elif self.cdfType == 'KDE':
+        self.cdfParams[target] = self._trainCdfKde(timeSeriesData)
+        normed = self._normalizeThroughCdfKde(timeSeriesData, self.cdfParams[target])
+      else:
+        raise ValueError
       self._signalStorage[target]['gaussianed'] = copy.deepcopy(normed[:])
       # check if this target is part of a correlation set, or standing alone
       if target in self.correlations:
@@ -822,7 +830,10 @@ class ARMA(SupervisedLearning):
       # DEBUG adding arbitrary variables for debugging, TODO find a more elegant way, leaving these here as markers
       #returnEvaluation[target+'_0base'] = copy.copy(signal)
       # denoise
-      signal = self._denormalizeThroughCDF(signal, self.cdfParams[target])
+      if self.cdfType == 'ECDF' or target == 'SOLAR':
+        signal = self._denormalizeThroughCDF(signal, self.cdfParams[target])
+      else:
+        signal = self._denormalizeThroughCdfKde(signal, self.cdfParams[target])
       # DEBUG adding arbitrary variables
       #returnEvaluation[target+'_1denorm'] = copy.copy(signal)
       #debuggFile.writelines('signal_arma,'+','.join(str(x) for x in signal)+'\n')
@@ -901,6 +912,10 @@ class ARMA(SupervisedLearning):
     """
     denormed = self.normEngine.cdf(data)
     denormed = self._sampleICDF(denormed, params)
+    return denormed
+
+  def _denormalizeThroughCdfKde(self, data, params):
+    denormed = params['icdf'](stats.norm.cdf(data))
     return denormed
 
   def _generateARMASignal(self, model, numSamples=None,randEngine=None):
@@ -1024,6 +1039,10 @@ class ARMA(SupervisedLearning):
     normed = self.normEngine.ppf(normed)
     return normed
 
+  def _normalizeThroughCdfKde(self, data, params):
+    normed = stats.norm.ppf(params['cdf'](data))
+    return normed
+
   def _sampleCDF(self, x, params):
     """
       Samples the CDF defined in 'params' to get values
@@ -1131,6 +1150,43 @@ class ARMA(SupervisedLearning):
               'lens' : len(data)}
               #'binSearch':neighbors.NearestNeighbors(n_neighbors=2).fit([[b] for b in edges]),
               #'cdfSearch':neighbors.NearestNeighbors(n_neighbors=2).fit([[c] for c in cdf])}
+    return params
+
+  def _trainCdfKde(self, data):
+    import statsmodels.api as sm
+    from scipy.integrate import quad
+    from scipy.interpolate import PchipInterpolator
+
+    kde = sm.nonparametric.KDEUnivariate(data)
+    kde.fit()
+
+    mean = np.mean(data)
+    lb = min(data) - 0.5 * abs(min(data) - mean)
+    ub = max(data) + 0.5 * abs(max(data) - mean)
+
+    pts = sorted(data)
+    pts = np.insert(pts, 0, [-np.inf, lb])
+    pts = np.insert(pts, len(pts), ub)
+    # pts = np.linspace(lb, ub, 100)
+    # pts = np.insert(pts, 0, -np.inf)
+
+    probs = np.array([quad(kde.evaluate, pts[i], pts[i+1])[0] for i in range(len(pts) - 1)])
+
+    cumprobs = np.cumsum(probs)
+
+    # Interpolate these CDF values so we have a callable function. We'll do this with monotonic cubic spline interpolation.
+    cdf = PchipInterpolator(pts[1:], cumprobs)
+
+    # Train the inverse CDF while we're here
+    x = np.linspace(0, 1, len(kde.density))
+    icdf = PchipInterpolator(x, kde.icdf)
+
+    params = {
+      'cdf': cdf,
+      'icdf': icdf,
+      'lens': len(data)
+    }
+
     return params
 
   def _trainPeak(self, timeSeriesData, windowDict):
@@ -1580,15 +1636,16 @@ class ARMA(SupervisedLearning):
         feature = featureTemplate.format(target=target, metric='arma', id='MA_{}'.format(q))
         features[feature] = val
       for target, cdfParam in self.cdfParams.items():
-        lenthOfData = cdfParam['lens']
+        lengthOfData = cdfParam['lens']
         feature = featureTemplate.format(target=target, metric='arma', id='len')
-        features[feature] = lenthOfData
-        for e, edge in enumerate(cdfParam['bins']):
-          feature = featureTemplate.format(target=target, metric='arma', id='bin_{}'.format(e))
-          features[feature] = edge
-        for c, count in enumerate(cdfParam['counts']):
-          feature = featureTemplate.format(target=target, metric='arma', id='counts_{}'.format(c))
-          features[feature] = count
+        features[feature] = lengthOfData
+        if self.cdfType == 'ECDF':
+          for e, edge in enumerate(cdfParam['bins']):
+            feature = featureTemplate.format(target=target, metric='arma', id='bin_{}'.format(e))
+            features[feature] = edge
+          for c, count in enumerate(cdfParam['counts']):
+            feature = featureTemplate.format(target=target, metric='arma', id='counts_{}'.format(c))
+            features[feature] = count
 
     # CDF preservation
     for target, cdf in self._trainingCDF.items():
