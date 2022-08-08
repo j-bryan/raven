@@ -289,7 +289,7 @@ class ARMA(SupervisedLearning):
     self.numCycles = None # if self.multicycle, this is the number of cycles per sample
     self.growthFactors = collections.defaultdict(list) # by target, this is how to scale the signal over successive cycles
 
-    self.cdfType = 'KDE'
+    self.cdfType = 'ECDF'
 
 
   def _handleInput(self, paramInput):
@@ -626,7 +626,11 @@ class ARMA(SupervisedLearning):
       if self.cdfType == 'ECDF' or target == 'SOLAR':
         self.cdfParams[target] = self._trainCDF(timeSeriesData, binOps=2)
         # normalize data
-        normed = self._normalizeThroughCDF(timeSeriesData, self.cdfParams[target])
+        if target == self.zeroFilterTarget:
+          mask = ~self._masks[target]['zeroFilterMask']
+        else:
+          mask = np.full(timeSeriesData.shape, True)
+        normed = self._normalizeThroughCDF(timeSeriesData, self.cdfParams[target], mask)
       elif self.cdfType == 'KDE':
         self.cdfParams[target] = self._trainCdfKde(timeSeriesData)
         normed = self._normalizeThroughCdfKde(timeSeriesData, self.cdfParams[target])
@@ -918,6 +922,32 @@ class ARMA(SupervisedLearning):
     denormed = params['icdf'](stats.norm.cdf(data))
     return denormed
 
+  def _adjustCDFMinMax(self, data, cdf, mask, bounds=None):
+    # ECDF will always be 0 below min(data) and 1 above max(data), when really we want asymptotic behavior there.
+    # We need to get a better estimate of what the real probability of those points are. We can use kernel density
+    # estimation to do this
+    import statsmodels.api as sm
+    from scipy.integrate import quad
+
+    # Run kernel density estimation on the data
+    kde = sm.nonparametric.KDEUnivariate(data[mask])
+    kde.fit()
+
+    iMin = np.argmin(data)
+    iMax = np.argmax(data)
+
+    if bounds is None:
+      bounds = [-np.inf, np.inf]
+
+    if data[iMin] > bounds[0]:
+      newMin = quad(kde.evaluate, bounds[0], data[iMin])[0]
+      cdf[iMin] = newMin
+    if data[iMax] < bounds[1]:
+      newMax = quad(kde.evaluate, data[iMax], bounds[1])[0]
+      cdf[iMax] = newMax
+
+    return cdf
+
   def _generateARMASignal(self, model, numSamples=None,randEngine=None):
     """
       Generates a synthetic history from fitted parameters.
@@ -1028,14 +1058,15 @@ class ARMA(SupervisedLearning):
     y[tuple(okayMask)] = Ylow[okay] + dy/dx * frac
     return y
 
-  def _normalizeThroughCDF(self, data, params):
+  def _normalizeThroughCDF(self, data, params, mask):
     """
       Normalizes "data" using a Gaussian normal plus CDF of data
       @ In, data, np.array, data to normalize with
       @ In, params, dict, CDF parameters (as obtained by "generateCDF")
+      @ In, mask, TODO
       @ Out, normed, np.array, normalized data
     """
-    normed = self._sampleCDF(data, params)
+    normed = self._sampleCDF(data, params, mask)
     normed = self.normEngine.ppf(normed)
     return normed
 
@@ -1043,11 +1074,12 @@ class ARMA(SupervisedLearning):
     normed = stats.norm.ppf(params['cdf'](data))
     return normed
 
-  def _sampleCDF(self, x, params):
+  def _sampleCDF(self, x, params, mask):
     """
       Samples the CDF defined in 'params' to get values
       @ In, x, float, value at which to sample inverse CDF
       @ In, params, dict, CDF parameters (as constructed by "_trainCDF")
+      @ In, mask, TODO
       @ Out, y, float, value of inverse CDF at x
     """
     # TODO could this be covered by an empirical distribution from Distributions?
@@ -1071,6 +1103,7 @@ class ARMA(SupervisedLearning):
     y = self._interpolateDist(x,y,Xlow,Xhigh,Ylow,Yhigh,inMask)
     # numerical errors can happen due to not-sharp 0 and 1 in empirical cdf
     ## also, when Crow dist is asked for ppf(1) it returns sys.max (similar for ppf(0))
+    # y = self._adjustCDFMinMax(x, y, mask)
     y[y >= 1.0] = 1.0 - np.finfo(float).eps
     y[y <= 0.0] = np.finfo(float).eps
     return y
@@ -1156,9 +1189,12 @@ class ARMA(SupervisedLearning):
     import statsmodels.api as sm
     from scipy.integrate import quad
     from scipy.interpolate import PchipInterpolator
+    from time import time
 
     kde = sm.nonparametric.KDEUnivariate(data)
+    start_fit = time()
     kde.fit()
+    stop_fit = time()
 
     mean = np.mean(data)
     lb = min(data) - 0.5 * abs(min(data) - mean)
@@ -1170,22 +1206,38 @@ class ARMA(SupervisedLearning):
     # pts = np.linspace(lb, ub, 100)
     # pts = np.insert(pts, 0, -np.inf)
 
+    start_int = time()
     probs = np.array([quad(kde.evaluate, pts[i], pts[i+1])[0] for i in range(len(pts) - 1)])
+    stop_int = time()
 
     cumprobs = np.cumsum(probs)
 
     # Interpolate these CDF values so we have a callable function. We'll do this with monotonic cubic spline interpolation.
+    start_cdf = time()
     cdf = PchipInterpolator(pts[1:], cumprobs)
+    stop_cdf = time()
 
     # Train the inverse CDF while we're here
     x = np.linspace(0, 1, len(kde.density))
+    start_icdf = time()
     icdf = PchipInterpolator(x, kde.icdf)
+    stop_icdf = time()
 
     params = {
       'cdf': cdf,
       'icdf': icdf,
       'lens': len(data)
     }
+
+    start_int0 = time()
+    prob = quad(kde.evaluate, pts[0], pts[1])
+    stop_int0 = time()
+
+    dt_fit = stop_fit - start_fit
+    dt_int = stop_int - start_int
+    dt_int0 = stop_int0 - start_int0
+    dt_cdf = stop_cdf - start_cdf
+    dt_icdf = stop_icdf - start_icdf
 
     return params
 
