@@ -21,6 +21,9 @@
 #External Modules------------------------------------------------------------------------------------
 import copy
 import collections
+
+import pandas as pd
+
 from ..utils import importerUtils
 from ..utils.utils import findCrowModule
 statsmodels = importerUtils.importModuleLazy("statsmodels", globals())
@@ -1092,7 +1095,7 @@ class ARMA(SupervisedLearning):
       @ Out, results, statsmodels.tsa.arima_model.ARMAResults, fitted ARMA
     """
     if masks is not None:
-      data = data[masks]
+      data[~masks] = np.nan  # masked values set to NaN instead of dropped to preserve data spacing during estimation
     import statsmodels.api
     results = statsmodels.tsa.arima.model.ARIMA(data, order=(self.P, 0, self.Q), trend='c').fit()
     # The ARIMAResults object here can cause problems with ray when running in parallel. Dropping it

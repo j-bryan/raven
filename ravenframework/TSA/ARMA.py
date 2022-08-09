@@ -157,7 +157,7 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer):
       Q = settings['Q']
       d = settings.get('d', 0)
       # TODO just use SARIMAX?
-      model = statsmodels.tsa.arima.model.ARIMA(normed, order=(P, d, Q), trend='c')
+      model = statsmodels.tsa.arima.model.ARIMA(normed, order=(P, d, Q), trend='c')  # TODO need to handle masked values
       res = model.fit(low_memory=settings['reduce_memory'])
       # NOTE on low_memory use, test using SyntheticHistory.ARMA test:
       #   case    | time used (s) | memory used (MiB)
