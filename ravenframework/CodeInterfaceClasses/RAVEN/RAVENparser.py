@@ -248,6 +248,7 @@ class RAVENparser():
     else:
       returnElement = self.tree                           #otherwise return the original modified
 
+    modiDictionary.pop('_indexMap', None)
     for fullNode, val in modiDictionary.items():
       # might be comma-separated ("fully correlated") variables
       nodes = [x.strip() for x in fullNode.split(',')]
