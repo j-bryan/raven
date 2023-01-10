@@ -19,7 +19,7 @@
   Specific ROM implementation for pickledROM
 """
 from .SupervisedLearning import SupervisedLearning
-from ..utils import InputTypes, InputData
+from ..utils import InputTypes, InputData, randomUtils
 
 class pickledROM(SupervisedLearning):
   """
@@ -121,6 +121,11 @@ class pickledROM(SupervisedLearning):
     self.initOptionDict = {}
     self.features = ['PlaceHolder']
     self.target = 'PlaceHolder'
+  
+  def _handleInput(self, paramInput):
+    nodes, notFound = paramInput.findNodesAndExtractValues(['seed'])
+    if 'seed' not in notFound and nodes['seed'] is not None:
+      randomUtils.randomSeed(abs(int(nodes['seed'])), seedBoth=True)
 
   def __confidenceLocal__(self,featureVals):
     """
