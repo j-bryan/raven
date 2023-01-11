@@ -121,12 +121,6 @@ class pickledROM(SupervisedLearning):
     self.initOptionDict = {}
     self.features = ['PlaceHolder']
     self.target = 'PlaceHolder'
-  
-  def _handleInput(self, paramInput):
-    nodes, notFound = paramInput.findNodesAndExtractValues(['seed'])
-    if 'seed' not in notFound and nodes['seed'] is not None:
-      print(f'*** DEBUGG Setting pickledROM seed {abs(int(nodes["seed"]))} ***')
-      randomUtils.randomSeed(abs(int(nodes['seed'])), seedBoth=True)
 
   def __confidenceLocal__(self,featureVals):
     """

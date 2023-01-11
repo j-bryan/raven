@@ -74,16 +74,20 @@ class MultiRun(SingleRun):
     self.raiseADebug(f'Sampler initialization dictionary: {self._samplerInitDict}')
 
   def _initializeModels(self, inDictionary):
-    #print("INITIALIZE MODELS DEBUGGG")
+    # We want to parameterize the synthetic histories we get by the RNG seed value used, so we need to
+    # set the seed deterministically. However, we don't want to seed every ROM with the same value, or
+    # the random sequences used when generating the ARMA output will be identical across ROMs. In our
+    # sampling of seed values, we use the discrete distribution of U(1, 512). By adding 512 to repeatedly
+    # to each successive ARMA ROM seed, we guarantee that all ROMs have a unique seed, starting from
+    # the initial seed. We're using the "re-seeding" attribute of the MultiRun to pass this value in.
     romCollection = inDictionary["Model"].modelsDictionary["Load"]["Instance"].supervisedContainer[0]
-    #print('ROM.supervisedContainer:')
-    #print(rom.supervisedContainer)
-    #print(len(rom.supervisedContainer))
-    #print(rom.supervisedContainer[0])
-    #print(type(rom.supervisedContainer[0]))
-    #assert False
-    for rom in romCollection.divisions:
-      rom.reseed(self.initSeed)
+    seed_step = 512  # because we're using seeds 1 to 512 when sampling
+    seed = self.initSeed
+    for s, step in romCollection._macroSteps.items():
+      for r, rom in enumerate(step._roms):
+        print(f'Setting ROM seed to {seed}')
+        rom.reseed(seed)
+        seed += seed_step
 
   def _localInitializeStep(self, inDictionary):
     """

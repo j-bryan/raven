@@ -463,9 +463,10 @@ class ARMA(SupervisedLearning):
     except AttributeError:  # catches where ARMA was pickled without saving the RNG
       self.setEngine(randomUtils.newRNG(), seed=self.seed, count=rngCounts)
 
-    if self.reseedCopies:
+    # if self.reseedCopies:
+    if False:
+      print("*** DEBUGG reseeding ARMA copy ***")
       randd = np.random.randint(1, 2e9)
-      print(f"*** DEBUGG Reseeding with {randd} ***") 
       self.reseed(randd)
 
   def setMulticycleParams(self, node):
@@ -880,7 +881,8 @@ class ARMA(SupervisedLearning):
       @ In, seed, int, new seed to use
       @ Out, None
     """
-    self.raiseADebug('Reseeding ARMA with seed "{}"'.format(seed))
+    # self.raiseADebug('Reseeding ARMA with seed "{}"'.format(seed))
+    print(f'*** DEBUGG Reseeding ARMA with seed {seed} ***')
     randomUtils.randomSeed(seed, engine=self.randomEng)
     self.seed = seed
 
@@ -920,6 +922,7 @@ class ARMA(SupervisedLearning):
     if randEngine is None:
       randEngine=self.randomEng
     import statsmodels.api
+    print(f'DEBUGG Generating ARMA Signal: RNG State {randEngine.getRNGState()}, RNG Seed {randEngine.getRNGSeed()}')
     hist = statsmodels.tsa.arima_process.arma_generate_sample(ar=model.polyar,
                                                               ma=model.polyma,
                                                               nsample=numSamples,
