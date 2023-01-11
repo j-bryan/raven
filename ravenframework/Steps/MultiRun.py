@@ -73,6 +73,18 @@ class MultiRun(SingleRun):
     self.raiseADebug(f'for the role of sampler the item of class {inDictionary[self.samplerType].type} and name {inDictionary[self.samplerType].name} has been initialized')
     self.raiseADebug(f'Sampler initialization dictionary: {self._samplerInitDict}')
 
+  def _initializeModels(self, inDictionary):
+    #print("INITIALIZE MODELS DEBUGGG")
+    romCollection = inDictionary["Model"].modelsDictionary["Load"]["Instance"].supervisedContainer[0]
+    #print('ROM.supervisedContainer:')
+    #print(rom.supervisedContainer)
+    #print(len(rom.supervisedContainer))
+    #print(rom.supervisedContainer[0])
+    #print(type(rom.supervisedContainer[0]))
+    #assert False
+    for rom in romCollection.divisions:
+      rom.reseed(self.initSeed)
+
   def _localInitializeStep(self, inDictionary):
     """
       This is the API for the local initialization of the children classes of step
@@ -119,6 +131,8 @@ class MultiRun(SingleRun):
       if not model.amITrained:
         model.raiseAnError(RuntimeError, f'ROM model "{model.name}" has not been trained yet, so it cannot be sampled!'+\
                                         ' Use a RomTrainer step to train it.')
+    if isinstance(model, Models.EnsembleModel):
+      self._initializeModels(inDictionary)
     for inputIndex in range(inDictionary['jobHandler'].runInfoDict['batchSize']):
       if inDictionary[self.samplerType].amIreadyToProvideAnInput():
         try:

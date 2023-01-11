@@ -465,6 +465,7 @@ class ARMA(SupervisedLearning):
 
     if self.reseedCopies:
       randd = np.random.randint(1, 2e9)
+      print(f"*** DEBUGG Reseeding with {randd} ***") 
       self.reseed(randd)
 
   def setMulticycleParams(self, node):
@@ -879,7 +880,7 @@ class ARMA(SupervisedLearning):
       @ In, seed, int, new seed to use
       @ Out, None
     """
-    #self.raiseADebug('Reseeding ARMA with seed "{}"'.format(seed))
+    self.raiseADebug('Reseeding ARMA with seed "{}"'.format(seed))
     randomUtils.randomSeed(seed, engine=self.randomEng)
     self.seed = seed
 
