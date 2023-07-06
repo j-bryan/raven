@@ -21,17 +21,20 @@ from ..EntityFactoryBase import EntityFactory
 from .TimeSeriesAnalyzer import TimeSeriesAnalyzer
 from .Fourier import Fourier
 from .ARMA import ARMA
+from .MarkovAR import MarkovAR
 from .Wavelet import Wavelet
 from .PolynomialRegression import PolynomialRegression
 from .RWD import RWD
 from .Transformers import ZeroFilter, LogTransformer, ArcsinhTransformer, TanhTransformer, SigmoidTransformer, \
-                          OutTruncation, MaxAbsScaler, MinMaxScaler, StandardScaler, RobustScaler, QuantileTransformer
+                          OutTruncation, MaxAbsScaler, MinMaxScaler, StandardScaler, RobustScaler, QuantileTransformer, \
+                          PeriodicScaler, PreserveCDF, Differencing
 
 factory = EntityFactory('TimeSeriesAnalyzer')
 # TODO map lower case to upper case, because of silly ROM namespace problems
 aliases = {'Fourier': 'fourier',
            'ARMA': 'arma',
            'RWD': 'rwd',
+           'MarkovAR': 'markovar',
            'Wavelet': 'wavelet',
            'ZeroFilter': 'zerofilter',
            'OutTruncation': 'outtruncation',
@@ -43,5 +46,8 @@ aliases = {'Fourier': 'fourier',
            'MinMaxScaler': 'minmaxscaler',
            'StandardScaler': 'standardscaler',
            'RobustScaler': 'robustscaler',
-           'QuantileTransformer': 'quantiletransformer'}
+           'QuantileTransformer': 'quantiletransformer',
+           'PeriodicScaler': 'periodicscaler',
+           'PreserveCDF': 'preservecdf',
+           'Differencing': 'differencing'}
 factory.registerAllSubtypes(TimeSeriesAnalyzer, alias=aliases)

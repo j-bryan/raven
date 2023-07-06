@@ -70,6 +70,14 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer):
                          observed switching between modes. Note that the ARMA must be
                          retrained to change this property; it cannot be applied to serialized ARMAs.
                          """, default=False)
+    specs.addParam('gaussianize', param_type=InputTypes.BoolType, required=False,
+                   descr=r"""activates a transformation of the signal to a normal distribution before
+                         training. This is done by fitting a CDF to the data and then transforming the
+                         data to a normal distribution using the CDF. The CDF is saved and used during
+                         sampling to back-transform the data to the original distribution. This is
+                         recommended for non-normal data, but is not required. Note that the ARMA must be
+                         retrained to change this property; it cannot be applied to serialized ARMAs.
+                         """, default=True)
     specs.addSub(InputData.parameterInputFactory('SignalLag', contentType=InputTypes.IntegerType,
                  descr=r"""the number of terms in the AutoRegressive term to retain in the
                        regression; typically represented as $P$ in literature."""))
@@ -102,6 +110,7 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer):
     settings['P'] = spec.findFirst('SignalLag').value
     settings['Q'] = spec.findFirst('NoiseLag').value
     settings['reduce_memory'] = spec.parameterValues.get('reduce_memory', settings['reduce_memory'])
+    settings['gaussianize'] = spec.parameterValues.get('gaussianize', settings['gaussianize'])
 
     return settings
 

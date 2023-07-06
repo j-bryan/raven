@@ -23,11 +23,40 @@ import abc
 from copy import deepcopy
 
 from ..TimeSeriesAnalyzer import TimeSeriesTransformer, TimeSeriesCharacterizer
-from ...utils import xmlUtils
+from ...utils import xmlUtils, InputTypes
 
 
 class SKLTransformer(TimeSeriesTransformer):
   """ Wrapper for scikit-learn transformers """
+  _acceptsMissingValues = True
+
+  @classmethod
+  def getInputSpecification(cls):
+    """
+      Method to get a reference to a class that specifies the input data for class cls.
+      @ In, None
+      @ Out, specs, InputData.ParameterInput, class to use for specifying input of cls.
+    """
+    specs = super().getInputSpecification()
+    specs.name = 'skltransformer'
+    specs.description = r"""applies a scikit-learn transformer to the data."""
+    specs.addParam('invert', param_type=InputTypes.BoolType, required=False, descr="""if True, swap
+                   the forward and inverse transform functions of the wrapped transformer class.""",
+                   default=False)
+    return specs
+
+  def handleInput(self, spec):
+    """
+      Reads user inputs into this object.
+      @ In, inp, InputData.InputParams, input specifications
+      @ Out, settings, dict, initialization settings for this algorithm
+    """
+    settings = super().handleInput(spec)
+    settings['invert'] = spec.parameterValues.get('invert', False)
+    if settings['invert']:
+      self._invertTransformationFunctions()
+    return settings
+
   @property
   @abc.abstractmethod
   def templateTransformer(self):
@@ -82,6 +111,15 @@ class SKLTransformer(TimeSeriesTransformer):
       composite[:, tg] = data['model'].inverse_transform(composite[:, tg].reshape(-1, 1)).flatten()
     return composite
 
+  def _invertTransformationFunctions(self):
+    """
+      Swaps the forward and inverse functions of the template transformer.
+      @ In, None
+      @ Out, None
+    """
+    self.templateTransformer.transform, self.templateTransformer.inverse_transform = \
+      self.templateTransformer.inverse_transform, self.templateTransformer.transform
+
   def writeXML(self, writeTo, params):
     """
       Allows the engine to put whatever it wants into an XML to print to file.
@@ -91,7 +129,6 @@ class SKLTransformer(TimeSeriesTransformer):
     """
     # Add model settings as subnodes to writeTO node
     for target, info in params.items():
-      # Add model attributes as a attributes in the node
       base = xmlUtils.newNode(target)
       writeTo.append(base)
 
