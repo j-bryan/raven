@@ -51,6 +51,7 @@ class TimeSeriesAnalyzer(utils.metaclass_insert(abc.ABCMeta, object)):
   def canGenerate(cls):
     """
       Determines if this algorithm is a generator.
+      @ In, None
       @ Out, isGenerator, bool, True if this algorithm is a TimeSeriesGenerator
     """
     return issubclass(cls, TimeSeriesGenerator)
@@ -59,6 +60,7 @@ class TimeSeriesAnalyzer(utils.metaclass_insert(abc.ABCMeta, object)):
   def canCharacterize(cls):
     """
       Determines if this algorithm is a characterizer.
+      @ In, None
       @ Out, isCharacterizer, bool, True if this algorithm is a TimeSeriesCharacterizer
     """
     return issubclass(cls, TimeSeriesCharacterizer)
@@ -67,6 +69,7 @@ class TimeSeriesAnalyzer(utils.metaclass_insert(abc.ABCMeta, object)):
   def canTransform(cls):
     """
       Determines if this algorithm is a transformer.
+      @ In, None
       @ Out, isTransformer, bool, True if this algorithm is a TimeSeriesTransformer
     """
     return issubclass(cls, TimeSeriesTransformer)
@@ -97,7 +100,7 @@ class TimeSeriesAnalyzer(utils.metaclass_insert(abc.ABCMeta, object)):
   def handleInput(self, spec):
     """
       Reads user inputs into this object.
-      @ In, inp, InputData.InputParams, input specifications
+      @ In, spec, InputData.InputParams, input specifications
       @ Out, settings, dict, initialization settings for this algorithm
     """
     settings = {}
@@ -121,6 +124,7 @@ class TimeSeriesAnalyzer(utils.metaclass_insert(abc.ABCMeta, object)):
   def canAcceptMissingValues(self):
     """
       Checks if the algorithm can accept missing values (generally NaN).
+      @ In, None
       @ Out, _acceptsMissingValues, bool, if the characterization algorithm accepts missing values
     """
     # NOTE Signals may have missing values, and this is incompatible with some algorithms. As
@@ -145,6 +149,10 @@ class TimeSeriesGenerator(TimeSeriesAnalyzer):
     reserved exclusively for stochastic algorithms. Deterministic generative algorithms should NOT
     inherit from this class.
   """
+  # Class attributes
+  ## defines if this algorithm is stochastic or deterministic
+  _isStochastic = False
+
   @classmethod
   def getInputSpecification(cls):
     """
@@ -155,6 +163,16 @@ class TimeSeriesGenerator(TimeSeriesAnalyzer):
     """
     specs = super().getInputSpecification()
     return specs
+
+  @classmethod
+  def isStochastic(cls):
+    """
+      Method that returns if a Generator algorithm is stochastic or deterministic.
+
+      @ In, None
+      @ Out, _isStochastic, bool, True if this algorithm is stochastic and False if it is deterministic
+    """
+    return cls._isStochastic
 
   @abc.abstractmethod
   def generate(self, params, pivot, settings):

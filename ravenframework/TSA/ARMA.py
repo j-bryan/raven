@@ -25,11 +25,11 @@ from ..utils import InputData, InputTypes, randomUtils, xmlUtils, mathUtils, imp
 statsmodels = importerUtils.importModuleLazy('statsmodels', globals())
 
 from .. import Distributions
-from .TimeSeriesAnalyzer import TimeSeriesGenerator, TimeSeriesCharacterizer
+from .TimeSeriesAnalyzer import TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer
 
 
 # utility methods
-class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer):
+class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer):
   r"""
     AutoRegressive Moving Average time series analyzer algorithm
   """
@@ -40,12 +40,14 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer):
                'sigma2',
                'const']
   _acceptsMissingValues = True
+  _isStochastic = True
 
   @classmethod
   def getInputSpecification(cls):
     """
       Method to get a reference to a class that specifies the input data for
       class cls.
+      @ In, None
       @ Out, inputSpecification, InputData.ParameterInput, class to use for
         specifying input of cls.
     """
@@ -103,7 +105,7 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer):
   def handleInput(self, spec):
     """
       Reads user inputs into this object.
-      @ In, inp, InputData.InputParams, input specifications
+      @ In, spec, InputData.InputParams, input specifications
       @ Out, settings, dict, initialization settings for this algorithm
     """
     settings = super().handleInput(spec)
@@ -160,7 +162,8 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer):
         # Applied Energy, 87(2010) 843-855
         # -> then train independent ARMAs
         params[target]['cdf'] = mathUtils.characterizeCDF(history[mask], binOps=2, minBins=self._minBins)
-        normed = mathUtils.gaussianize(history[mask], params[target]['cdf'])
+        normed = history
+        normed[mask] = mathUtils.gaussianize(history[mask], params[target]['cdf'])
       else:
         normed = history
       # TODO correlation (VARMA) as well as singular -> maybe should be independent TSA algo?
@@ -200,6 +203,44 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer):
       if not settings['reduce_memory']:
         params[target]['arma']['results'] = res
     return params
+
+  def getResidual(self, initial, params, pivot, settings):
+    """
+      Removes trained signal from data and find residual
+      @ In, initial, np.array, original signal shaped [pivotValues, targets], targets MUST be in
+                               same order as self.target
+      @ In, params, dict, training parameters as from self.characterize
+      @ In, pivot, np.array, time-like array values
+      @ In, settings, dict, additional settings specific to algorithm
+      @ Out, residual, np.array, reduced signal shaped [pivotValues, targets]
+    """
+    # The residual for an ARMA model can be useful, and we want to return that if it's available.
+    # If the 'reduce_memory' option was used, then the ARIMAResults object from fitting the model
+    # where that residual is stored is not available. In that case, we simply return the original.
+    if settings['reduce_memory']:
+      return initial
+
+    residual = initial.copy()
+    for t, (target, data) in enumerate(params.items()):
+      residual[:, t] = data['arma']['results'].resid
+
+    return residual
+
+  def getComposite(self, initial, params, pivot, settings):
+    """
+      Combines two component signals to form a composite signal. This is essentially the inverse
+      operation of the getResidual method.
+      @ In, initial, np.array, original signal shaped [pivotValues, targets], targets MUST be in
+                               same order as self.target
+      @ In, params, dict, training parameters as from self.characterize
+      @ In, pivot, np.array, time-like array values
+      @ In, settings, dict, additional settings specific to algorithm
+      @ Out, composite, np.array, resulting composite signal
+    """
+    # Add a generated ARMA signal to the initial signal.
+    synthetic = self.generate(params, pivot, settings)
+    composite = initial + synthetic
+    return composite
 
   def getParamNames(self, settings):
     """

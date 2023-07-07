@@ -20,10 +20,10 @@ from ..utils import importerUtils
 statsmodels = importerUtils.importModuleLazy("statsmodels", globals())
 
 from ..utils import InputData, InputTypes, randomUtils, xmlUtils, mathUtils, utils
-from .TimeSeriesAnalyzer import TimeSeriesCharacterizer, TimeSeriesTransformer
+from .TimeSeriesAnalyzer import TimeSeriesCharacterizer, TimeSeriesTransformer, TimeSeriesGenerator
 
 
-class PolynomialRegression(TimeSeriesTransformer, TimeSeriesCharacterizer):
+class PolynomialRegression(TimeSeriesTransformer, TimeSeriesCharacterizer, TimeSeriesGenerator):
   """
   """
   _acceptsMissingValues = True
@@ -59,7 +59,7 @@ class PolynomialRegression(TimeSeriesTransformer, TimeSeriesCharacterizer):
   def handleInput(self, spec):
     """
       Reads user inputs into this object.
-      @ In, inp, InputData.InputParams, input specifications
+      @ In, spec, InputData.InputParams, input specifications
       @ Out, settings, dict, initialization settings for this algorithm
     """
     settings = super().handleInput(spec)
@@ -146,11 +146,11 @@ class PolynomialRegression(TimeSeriesTransformer, TimeSeriesCharacterizer):
       @ In, settings, dict, additional settings specific to algorithm
       @ Out, composite, np.array, resulting composite signal
     """
-    synthetic = self._generateSignal(params, pivot, settings)
+    synthetic = self.generate(params, pivot, settings)
     composite = initial + synthetic
     return composite
 
-  def _generateSignal(self, params, pivot, settings):
+  def generate(self, params, pivot, settings):
     """
       Generates a synthetic history from fitted parameters.
       @ In, params, dict, characterization such as otained from self.characterize()
