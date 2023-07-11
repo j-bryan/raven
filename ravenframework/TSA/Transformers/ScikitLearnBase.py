@@ -157,6 +157,23 @@ class SKLCharacterizer(SKLTransformer, TimeSeriesCharacterizer):
       params[target]['model'] = transformer
     return params
 
+  def getClusteringValues(self, nameTemplate: str, requests: list, params: dict) -> dict:
+    """
+      Provide the characteristic parameters of this ROM for clustering with other ROMs
+      @ In, nameTemplate, str, formatting string template for clusterable params (target, metric id)
+      @ In, requests, list, list of requested attributes from this ROM
+      @ In, params, dict, parameters from training this ROM
+      @ Out, features, dict, params as {paramName: value}
+    """
+    features = {}
+    requestedFeatures = set(self._features).intersection(set(requests))
+    for target, info in params.items():
+      for feat in requestedFeatures:
+        value = info[feat]
+        key = nameTemplate.format(target=target, metric=self.name, id=feat)
+        features[key] = value
+    return features
+
   def getParamsAsVars(self, params):
     """
       Map characterization parameters into flattened variable format
