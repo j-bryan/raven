@@ -195,15 +195,16 @@ class Fourier(TimeSeriesTransformer, TimeSeriesCharacterizer, TimeSeriesGenerato
       @ In, settings, dict, additional settings specific to algorithm
       @ Out, composite, np.array, resulting composite signal
     """
-    synthetic = self.generate(params, pivot)
+    synthetic = self.generate(params, pivot, settings)
     residual = initial + synthetic
     return residual
 
-  def generate(self, params, pivot):
+  def generate(self, params, pivot, settings):
     """
       Generates a synthetic history from fitted parameters.
       @ In, params, dict, characterization such as otained from self.characterize()
       @ In, pivot, np.array(float), pivot parameter values
+      @ In, settings, dict, additional settings specific to algorithm
       @ Out, synthetic, np.array(float), synthetic ARMA signal
     """
     synthetic = np.zeros((len(pivot), len(params)))
