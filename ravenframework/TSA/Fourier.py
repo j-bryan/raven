@@ -181,7 +181,7 @@ class Fourier(TimeSeriesTransformer, TimeSeriesCharacterizer, TimeSeriesGenerato
       @ In, settings, dict, additional settings specific to algorithm
       @ Out, residual, np.array, reduced signal shaped [pivotValues, targets]
     """
-    synthetic = self.generate(params, pivot)
+    synthetic = self.generate(params, pivot, settings)
     residual = initial - synthetic
     return residual
 
