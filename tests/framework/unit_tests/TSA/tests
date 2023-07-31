@@ -36,4 +36,8 @@
     type = 'RavenPython'
     input = 'testDifferencing.py'
   [../]
+  [./STL]
+    type = 'RavenPython'
+    input = 'testSTL.py'
+  [../]
 []
