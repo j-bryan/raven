@@ -37,7 +37,7 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer):
   ## define the clusterable features for this trainer.
   _features = ['ar',
                'ma',
-               'sigma2',
+               'var',
                'const']
   _acceptsMissingValues = True
   _isStochastic = True
@@ -48,7 +48,7 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer):
       Method to get a reference to a class that specifies the input data for
       class cls.
       @ In, None
-      @ Out, inputSpecification, InputData.ParameterInput, class to use for
+      @ Out, specs, InputData.ParameterInput, class to use for
         specifying input of cls.
     """
     specs = super(ARMA, cls).getInputSpecification()
@@ -79,7 +79,10 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer):
                          sampling to back-transform the data to the original distribution. This is
                          recommended for non-normal data, but is not required. Note that the ARMA must be
                          retrained to change this property; it cannot be applied to serialized ARMAs.
-                         """, default=True)
+                         Note: New models wishing to apply this transformation should use a
+                         \xmlNode{gaussianize} node preceding the \xmlNode{arma} node instead of this
+                         option.
+                         """, default=False)
     specs.addSub(InputData.parameterInputFactory('SignalLag', contentType=InputTypes.IntegerType,
                  descr=r"""the number of terms in the AutoRegressive term to retain in the
                        regression; typically represented as $P$ in literature."""))
@@ -124,7 +127,7 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer):
     """
     settings = super().setDefaults(settings)
     if 'gaussianize' not in settings:
-      settings['gaussianize'] = True
+      settings['gaussianize'] = False
     if 'engine' not in settings:
       settings['engine'] = randomUtils.newRNG()
     if 'reduce_memory' not in settings:

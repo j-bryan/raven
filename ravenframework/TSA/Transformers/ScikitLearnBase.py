@@ -30,33 +30,6 @@ class SKLTransformer(TimeSeriesTransformer):
   """ Wrapper for scikit-learn transformers """
   _acceptsMissingValues = True
 
-  @classmethod
-  def getInputSpecification(cls):
-    """
-      Method to get a reference to a class that specifies the input data for class cls.
-      @ In, None
-      @ Out, specs, InputData.ParameterInput, class to use for specifying input of cls.
-    """
-    specs = super().getInputSpecification()
-    specs.name = 'skltransformer'
-    specs.description = r"""applies a scikit-learn transformer to the data."""
-    specs.addParam('invert', param_type=InputTypes.BoolType, required=False, descr="""if True, swap
-                   the forward and inverse transform functions of the wrapped transformer class.""",
-                   default=False)
-    return specs
-
-  def handleInput(self, spec):
-    """
-      Reads user inputs into this object.
-      @ In, inp, InputData.InputParams, input specifications
-      @ Out, settings, dict, initialization settings for this algorithm
-    """
-    settings = super().handleInput(spec)
-    settings['invert'] = spec.parameterValues.get('invert', False)
-    if settings['invert']:
-      self._invertTransformationFunctions()
-    return settings
-
   @property
   @abc.abstractmethod
   def templateTransformer(self):
@@ -76,7 +49,7 @@ class SKLTransformer(TimeSeriesTransformer):
     params = {}
     for tg, target in enumerate(targets):
       transformer = deepcopy(self.templateTransformer)
-      transformer.fit(signal)
+      transformer.fit(signal[:, tg].reshape(-1, 1))
       params[target] = {'model': transformer}
     return params
 
@@ -149,7 +122,7 @@ class SKLCharacterizer(SKLTransformer, TimeSeriesCharacterizer):
     params = {}
     for tg, target in enumerate(targets):
       transformer = deepcopy(self.templateTransformer)
-      transformer.fit(signal)
+      transformer.fit(signal[:, tg].reshape(-1, 1))
       # Attributes of interest in the transformer have the convention of ending with an underscore,
       # so that underscore is added here to the feature names before fetching them.
       # Also, the transformer features are stored in an array, so we take the first (and only) element.
