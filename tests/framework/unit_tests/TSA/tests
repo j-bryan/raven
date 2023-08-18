@@ -39,6 +39,7 @@
   [./STL]
     type = 'RavenPython'
     input = 'testSTL.py'
+  [../]
   [./Distributions]
     type = 'RavenPython'
     input = 'testDistributionTransformations.py'
