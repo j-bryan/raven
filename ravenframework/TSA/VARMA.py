@@ -155,12 +155,25 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
     cov = solve_discrete_lyapunov(smoother['transition',:,:,0], selCov)
     # FIXME it appears this is always resulting in a lowest-value initial state.  Why?
     initDist = self._trainMultivariateNormal(len(mean),mean,cov)
+
+    for name, value in zip(res.param_names, res.params):
+      # variance or covariance terms are of format 'sqrt.var.y1' or 'sqrt.cov.y1.y2'
+      if not name.startswith('sqrt'):
+        continue
+
+
     params = {}
     params['VARMA'] = {'model': results,
                        'targets': targets,
+                       'ar': results.coefficient_matrices_var,
+                       'ma': results.coefficient_matrices_vma,
+                       'cov':
                        'initDist': initDist,
                        'noiseDist': stateDist}
     return params
+
+  def _buildCovarianceMatrix(self, params):
+
 
   def _trainMultivariateNormal(self, dim, means, cov):
     """
@@ -243,17 +256,27 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
       @ In, settings, dict, training parameters for this algorithm
       @ Out, names, list, string list of names
     """
-    # TODO
     names = []
     base = f'{self.name}'
-    for target in settings['target']:
-      base = f'{self.name}__{target}'
-      names.append(f'{base}__constant')
-      names.append(f'{base}__covariance')
+
+    for i, target in enumerate(settings['target']):
+      # constant and variance
+      names.append(f'{base}__constant__{target}')
+      names.append(f'{base}__variance__{target}')
+
+      # covariances
+      for j, target2 in enumerate(settings['target']):
+        if j >= i:
+          continue
+        names.append(f'{base}__covariance__{target}_{target2}')
+
+      # AR/MA coefficients
       for p in range(settings['P']):
-        names.append(f'{base}__AR__{p}')
+        for j, target2 in enumerate(settings['target']):
+          names.append(f'{base}__AR__{p}__{target}_{target2}')
       for q in range(settings['Q']):
-        names.append(f'{base}__MA__{q}')
+        for j, target2 in enumerate(settings['target']):
+          names.append(f'{base}__MA__{q}__{target}_{target2}')
     return names
 
   def getParamsAsVars(self, params):
@@ -262,16 +285,33 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
       @ In, params, dict, trained parameters (as from characterize)
       @ Out, rlz, dict, realization-style response
     """
-    # TODO
     rlz = {}
-    for target, info in params.items():
-      base = f'{self.name}__{target}'
-      rlz[f'{base}__constant'] = info['arma']['const']
-      rlz[f'{base}__variance'] = info['arma']['var']
-      for p, ar in enumerate(info['arma']['ar']):
-        rlz[f'{base}__AR__{p}'] = ar
-      for q, ma in enumerate(info['arma']['ma']):
-        rlz[f'{base}__MA__{q}'] = ma
+    model = params['VARMA']['model']
+    targetNames = params['VARMA']['targets']
+
+    for name, value in zip(model.param_names, model.params):
+      parts = name.split('.')  # e.g. 'intercept.y1', 'sqrt.var.y1', 'L1.y1.y1', 'L1.e(y1).y2', 'sqrt.cov.y1.y2'
+      if parts[0] == 'intercept':
+        target = targetNames[int(parts[1][1:]) - 1]
+        rlz[f'{self.name}__constant__{target}'] = value
+      elif parts[1] == 'var':  # variance (diagonal)
+        target = targetNames[int(parts[2][1:]) - 1]
+        rlz[f'{self.name}__variance__{target}'] = value ** 2
+      elif parts[1] == 'cov':  # covariance (off-diagonal)
+        target1 = targetNames[int(parts[2][1:]) - 1]
+        target2 = targetNames[int(parts[3][1:]) - 1]
+        rlz[f'{self.name}__covariance__{target1}_{target2}'] = value ** 2
+      elif parts[0].startswith('L') and parts[1].startswith('y'):  # AR coeff
+        target1 = targetNames[int(parts[1][1:]) - 1]
+        target2 = targetNames[int(parts[2][1:]) - 1]
+        rlz[f'{self.name}__AR__{parts[0][1:]}__{target1}_{target2}'] = value
+      elif parts[0].startswith('L') and parts[1].startswith('e'):  # MA coeff
+        target1 = targetNames[int(parts[1][3:-1]) - 1]
+        target2 = targetNames[int(parts[2][1:]) - 1]
+        rlz[f'{self.name}__MA__{parts[0][1:]}__{target1}_{target2}'] = value
+      else:
+        raise ValueError(f'Unrecognized parameter name "{name}"!')
+
     return rlz
 
   # clustering
@@ -301,7 +341,7 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
       if 'const' in requests:
         key = nameTemplate.format(target=target, metric=self.name, id='const')
         features[key] = data['const']
-      if 'var' in requests:
+      if 'cov' in requests:
         key = nameTemplate.format(target=target, metric=self.name, id='var')
         features[key] = data['var']
     return features
@@ -333,13 +373,48 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
       @ In, params, dict, trained parameters as from self.characterize
       @ Out, None
     """
-    model = params['VARMA']['model']
-    targets = params['VARMA']['targets']
-    nodes = self._parseParams(model.param_names, model.params, targets)
-    for name, node in nodes.items():
-      writeTo.append(node)
+    # We can leverage the getParamsAsVars method to parse the model parameters into a flat dictionary
+    # that's easier to work with.
+    parsedParams = self.getParamsAsVars(params)
 
-  def _parseParams(self, names, values, targetNames):
+    # Under the <VARMA> base node, we'll organize the parameter values by parameter type, then by target.
+    constant = xmlUtils.newNode('constant')
+    covariance = xmlUtils.newNode('covariance')
+    ar = xmlUtils.newNode('AR')
+    ma = xmlUtils.newNode('MA')
+
+    for name, value in parsedParams.items():
+      parts = name.split('__')
+      # The format of name depends a bit on which parameter it's for. Here are the possibilities:
+      #    Constant: VARMA__constant__<target>
+      #    Variance: VARMA__variance__<target>
+      #    Covariance: VARMA__covariance__<target1>_<target2>
+      #    AR: VARMA__AR__<lag>__<target1>_<target2>
+      #    MA: VARMA__MA__<lag>__<target1>_<target2>
+      # We want to write the XML by grouping by parameter type, not by target. Given the number of
+      # cross-target parameters, I think this makes more sense.
+      if parts[1] == 'constant':
+        constant.append(xmlUtils.newNode(parts[2], text=f'{value}'))
+      elif parts[1] == 'variance':
+        covariance.append(xmlUtils.newNode(f'var_{parts[2]}', text=f'{value}'))
+      elif parts[1] == 'covariance':
+        covariance.append(xmlUtils.newNode(f'cov_{parts[2]}', text=f'{value}'))
+      elif parts[1] == 'AR':
+        ar.append(xmlUtils.newNode(f'Lag{parts[2]}_{parts[3]}', text=f'{value}'))
+      elif parts[1] == 'MA':
+        ma.append(xmlUtils.newNode(f'Lag{parts[2]}_{parts[3]}', text=f'{value}'))
+      else:
+        raise ValueError(f'Unrecognized parameter name "{name}"!')
+
+    writeTo.append(constant)
+    writeTo.append(covariance)
+    # Each of the AR and MA nodes may or may not have children, so we'll only append them if they do.
+    if len(ar) > 0:
+      writeTo.append(ar)
+    if len(ma) > 0:
+      writeTo.append(ma)
+
+  def _parseParamsToXML(self, names, values, targetNames):
     """
       Parses VARMA parameter names into XML nodes
       @ In, names, list(str), parameter names
