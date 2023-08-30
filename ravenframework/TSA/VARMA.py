@@ -20,7 +20,7 @@ from scipy.linalg import solve_discrete_lyapunov
 
 from .. import Distributions
 
-from ..utils import InputData, InputTypes, randomUtils, xmlUtils, mathUtils, importerUtils
+from ..utils import InputData, InputTypes, randomUtils, xmlUtils, importerUtils
 statsmodels = importerUtils.importModuleLazy('statsmodels', globals())
 
 from .TimeSeriesAnalyzer import TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer
@@ -140,6 +140,29 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
     ## it appears "measurement" always has 0 covariance, and so is all zeros (see _generateVARMASignal)
     ## all the noise comes from the stateful properties
     stateDist = self._trainMultivariateNormal(numVars, np.zeros(numVars), model.ssm['state_cov'])
+
+    # The model parameters (results.params) come in a flattened array in the following order:
+    #    - Constant terms for each target (numVars terms)
+    #    - AR terms (P*numVars^2 terms)
+    #    - MA terms (Q*numVars^2 terms)
+    #    - Covariance terms (flattened upper triangle of covariance matrix, numVars*(numVars+1)/2 terms)
+    # In cases where P=0 or Q=0, using the numpy array_split function will result in an empty array
+    # for those terms.
+    splitIndices = np.cumsum([numVars, P * numVars ** 2, Q * numVars ** 2]).astype(int)
+    paramSplit = np.array_split(results.params, splitIndices)
+
+    params = {}
+    params['VARMA'] = {'model': results,
+                       'targets': targets,
+                       'const': paramSplit[0],
+                       'ar': paramSplit[1],
+                       'ma': paramSplit[2],
+                       'cov': paramSplit[3],
+                       'initDist': initDist,
+                       'noiseDist': stateDist}
+    return params
+
+  def _trainInitDist(self, ):
     # train initial state sampler
     ## Used to pick an initial state for the VARMA by sampling from the multivariate normal noise
     #    and using the AR and MA initial conditions.  Implemented so we can control the RNG internally.
@@ -154,26 +177,8 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
     selCov = r.dot(q).dot(r.T)
     cov = solve_discrete_lyapunov(smoother['transition',:,:,0], selCov)
     # FIXME it appears this is always resulting in a lowest-value initial state.  Why?
-    initDist = self._trainMultivariateNormal(len(mean),mean,cov)
-
-    for name, value in zip(res.param_names, res.params):
-      # variance or covariance terms are of format 'sqrt.var.y1' or 'sqrt.cov.y1.y2'
-      if not name.startswith('sqrt'):
-        continue
-
-
-    params = {}
-    params['VARMA'] = {'model': results,
-                       'targets': targets,
-                       'ar': results.coefficient_matrices_var,
-                       'ma': results.coefficient_matrices_vma,
-                       'cov':
-                       'initDist': initDist,
-                       'noiseDist': stateDist}
-    return params
-
-  def _buildCovarianceMatrix(self, params):
-
+    initDist = self._trainMultivariateNormal(len(mean), mean, cov)
+    return initDist
 
   def _trainMultivariateNormal(self, dim, means, cov):
     """
@@ -242,12 +247,14 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
     initDist = params['VARMA']['initDist']
     stateShocks = np.array([noiseDist.rvs() for _ in range(numSamples)])
 
+    # Load model params
+
     # pick an intial by sampling multinormal distribution
     init = np.array(initDist.rvs())
-    synthetic = model.simulate(numSamples,
-                               initial_state=init,
-                               measurement_shocks=measureShocks,
-                               state_shocks=stateShocks)
+    synthetic = model.model.simulate(numSamples,
+                                     initial_state=init,
+                                     measurement_shocks=measureShocks,
+                                     state_shocks=stateShocks)
     return synthetic
 
   def getParamNames(self, settings):
@@ -327,23 +334,34 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
     # -> target is the trained variable (e.g. Signal, Temperature)
     # -> metric is the algorithm used (e.g. Fourier, ARMA)
     # -> id is the subspecific characteristic ID (e.g. sin, AR_0)
+    # nameTemplate = "{target}|{metric}|{id}"
     features = {}
-    for target, info in params.items():
-      data = info['arma']
-      if 'ar' in requests:
-        for p, phi in enumerate(data['ar']):
-          key = nameTemplate.format(target=target, metric=self.name, id=f'ar_{p}')
-          features[key] = phi
-      if 'ma' in requests:
-        for q, theta in enumerate(data['ma']):
-          key = nameTemplate.format(target=target, metric=self.name, id=f'ma_{q}')
-          features[key] = theta
-      if 'const' in requests:
-        key = nameTemplate.format(target=target, metric=self.name, id='const')
-        features[key] = data['const']
-      if 'cov' in requests:
-        key = nameTemplate.format(target=target, metric=self.name, id='var')
-        features[key] = data['var']
+    data = params['VARMA']
+    model = data['model']
+    numVars = len(data['targets'])
+    for req in requests:
+      paramValues = data[req]
+      if req == 'const':
+        for i, target in enumerate(data['targets']):
+          features[nameTemplate.format(target=target, metric='VARMA', id='const')] = paramValues[i]
+      elif req == 'cov':
+        for i, target in enumerate(data['targets']):
+          for j, target2 in enumerate(data['targets']):
+            if j >= i:
+              continue
+            features[nameTemplate.format(target=target, metric='VARMA', id=f'cov_{target2}')] = paramValues[i*numVars+j]
+      elif req == 'ar':  # ordered by target1, then lag, then target2
+        for i, target in enumerate(data['targets']):
+          for p in range(model.model.k_ar):
+            for j, target2 in enumerate(data['targets']):
+              features[nameTemplate.format(target=target, metric='VARMA', id=f'ar_{p+1}_{target2}')] \
+                = paramValues[p*numVars*numVars+i*numVars+j]
+      elif req == 'ma':  # ordered by target1, then lag, then target2
+        for i, target in enumerate(data['targets']):
+          for q in range(model.model.k_ma):
+            for j, target2 in enumerate(data['targets']):
+              features[nameTemplate.format(target=target, metric='VARMA', id=f'ma_{q+1}_{target2}')] \
+                = paramValues[q*numVars*numVars+i*numVars+j]
     return features
 
   def setClusteringValues(self, fromCluster, params):
@@ -354,16 +372,29 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
       @ In, params, dict, trained parameter settings
       @ Out, params, dict, updated parameter settings
     """
+    targets = params['VARMA']['targets']
+    arOrder = params['VARMA']['model'].model.k_ar
+    maOrder = params['VARMA']['model'].model.k_ma
+    numVars = len(targets)
+
     for target, identifier, value in fromCluster:
       value = float(value)
-      if identifier in ['const', 'var']:
-        params[target]['arma'][identifier] = value
-      elif identifier.startswith('ar_'):
-        index = int(identifier.split('_')[1])
-        params[target]['arma']['ar'][index] = value
-      elif identifier.startswith('ma_'):
-        index = int(identifier.split('_')[1])
-        params[target]['arma']['ma'][index] = value
+      targetIndex = targets.index(target)
+      idSplit = identifier.split('_')
+      if idSplit[0] == 'const':
+        params['VARMA']['const'][targetIndex] = value
+      elif idSplit[0] == 'cov':
+        target2Index = targets.index(idSplit[1])
+        params['VARMA']['cov'][numVars * targetIndex+target2Index] = value
+      elif idSplit[0] == 'ar':
+        lag = int(idSplit[1])
+        target2Index = targets.index(idSplit[2])
+        params['VARMA']['ar'][targetIndex * numVars * arOrder + (lag - 1) * numVars + target2Index] = value
+      elif idSplit[0] == 'ma':
+        lag = int(idSplit[1])
+        target2Index = targets.index(idSplit[2])
+        params['VARMA']['ma'][targetIndex * numVars * maOrder + (lag - 1) * numVars + target2Index] = value
+
     return params
 
   def writeXML(self, writeTo, params):
@@ -413,49 +444,3 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
       writeTo.append(ar)
     if len(ma) > 0:
       writeTo.append(ma)
-
-  def _parseParamsToXML(self, names, values, targetNames):
-    """
-      Parses VARMA parameter names into XML nodes
-      @ In, names, list(str), parameter names
-      @ In, values, list(float), parameter values
-      @ in, targetNames, list(str), list of target variable names
-      @ Out, nodes, dict, dictionary of XML nodes
-    """
-    nodes = {
-      'constant': xmlUtils.newNode('constant'),
-      'covariance': xmlUtils.newNode('covariance'),
-      'AR': xmlUtils.newNode('AR'),
-      'MA': xmlUtils.newNode('MA')
-    }
-
-    for name, value in zip(names, values):
-      parts = name.split('.')  # e.g. 'intercept.y1', 'sqrt.var.y1', 'L1.y1.y1', 'L1.e(y1).y2', 'sqrt.cov.y1.y2'
-      if parts[0] == 'intercept':
-        target = targetNames[int(parts[1][1:]) - 1]
-        nodes['constant'].append(xmlUtils.newNode(target, text=f'{value}'))
-      elif parts[1] == 'var':  # variance (diagonal)
-        target = targetNames[int(parts[2][1:]) - 1]
-        nodes['covariance'].append(xmlUtils.newNode(f'var_{target}', text=f'{value ** 2}'))
-      elif parts[1] == 'cov':  # covariance (off-diagonal)
-        target1 = targetNames[int(parts[2][1:]) - 1]
-        target2 = targetNames[int(parts[3][1:]) - 1]
-        nodes['covariance'].append(xmlUtils.newNode(f'cov_{target1}_{target2}', text=f'{value ** 2}'))
-      elif parts[0].startswith('L') and parts[1].startswith('y'):  # AR coeff
-        target1 = targetNames[int(parts[1][1:]) - 1]
-        target2 = targetNames[int(parts[2][1:]) - 1]
-        if target1 == target2:
-          nodes['AR'].append(xmlUtils.newNode(f'Lag{parts[0][1:]}_{target1}', text=f'{value}'))
-        else:
-          nodes['AR'].append(xmlUtils.newNode(f'Lag{parts[0][1:]}_{target1}_{target2}', text=f'{value}'))
-      elif parts[0].startswith('L') and parts[1].startswith('e'):  # MA coeff
-        target1 = targetNames[int(parts[1][3:-1]) - 1]
-        target2 = targetNames[int(parts[2][1:]) - 1]
-        if target1 == target2:
-          nodes['MA'].append(xmlUtils.newNode(f'Lag{parts[0][1:]}_{target1}', text=f'{value}'))
-        else:
-          nodes['MA'].append(xmlUtils.newNode(f'Lag{parts[0][1:]}_{target1}_{target2}', text=f'{value}'))
-      else:
-        raise ValueError(f'Unrecognized parameter name "{name}"!')
-
-    return nodes

@@ -205,4 +205,20 @@
       zero_threshold = 1e-3
     [../]
   [../]
+
+  [./VARMAInterpolated]
+    type = 'RavenFramework'
+    input = 'varma_interpolated.xml'
+    [./csv]
+      type = OrderedCSV
+      output = 'VARMAInterpolated/samples.csv'
+      rel_err = 1e-2
+    [../]
+    [./xml]
+      type = XML
+      output = 'VARMAInterpolated/romMeta.xml'
+      rel_err = 1e-2
+      zero_threshold = 1e-3
+    [../]
+  [../]
 []

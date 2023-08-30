@@ -203,6 +203,12 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer):
                                 'var': res.params[res.param_names.index('sigma2')],  # variance
                                 'initials': initDist,   # characteristics for sampling initial states
                                 'model': model}
+      print('JACOB DEBUG')
+      print('   fit - initMean:', initMean)
+      print('   fit - initCov:', initCov)
+      print('   fit - state_intercept:', smoother['state_intercept',:,0])
+      print('   fit - state_intercept:', smoother.state_intercept[:, 0])
+      print('END DEBUG')
       if not settings['reduce_memory']:
         params[target]['arma']['results'] = res
     return params
@@ -296,7 +302,10 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer):
                                armaData['ar'],
                                armaData['ma'],
                                [armaData.get('var', 1)]])
+      print('JACOB DEBUG')
+      print('modelParams:', modelParams)
       msrShocks, stateShocks, initialState = self._generateNoise(armaData['model'], armaData['initials'], synthetic.shape[0])
+      print('END DEBUG')
       # measurement shocks
       # statsmodels if we don't provide them.
       # produce sample
@@ -406,4 +415,8 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer):
     initMean = initDict['mean']
     initCov = initDict['cov']
     initialState = randomUtils.randomMultivariateNormal(initCov, size=1, mean=initMean)
+    print('msrCov:', msrCov)
+    print('stateCov:', stateCov)
+    print('initCov:', initCov)
+    print('initMean:', initMean)
     return msrShocks, stateShocks, initialState
