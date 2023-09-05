@@ -71,8 +71,8 @@
       <pivotParameter>seconds</pivotParameter>
       <zerofilter target="signal0, signal1"/>  <!-- Helps test fitting with missing values -->
       <varma target="signal0, signal1" seed='42'>
-        <P>1</P>
-        <Q>0</Q>
+        <P>2</P>
+        <Q>1</Q>
       </varma>
     </ROM>
   </Models>

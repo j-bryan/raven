@@ -16,7 +16,7 @@
 """
 import os
 import numpy as np
-from scipy.linalg import solve_discrete_lyapunov
+import scipy as sp
 
 from .. import Distributions
 
@@ -141,44 +141,46 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
     ## all the noise comes from the stateful properties
     stateDist = self._trainMultivariateNormal(numVars, np.zeros(numVars), model.ssm['state_cov'])
 
-    # The model parameters (results.params) come in a flattened array in the following order:
-    #    - Constant terms for each target (numVars terms)
-    #    - AR terms (P*numVars^2 terms)
-    #    - MA terms (Q*numVars^2 terms)
-    #    - Covariance terms (flattened upper triangle of covariance matrix, numVars*(numVars+1)/2 terms)
-    # In cases where P=0 or Q=0, using the numpy array_split function will result in an empty array
-    # for those terms.
-    splitIndices = np.cumsum([numVars, P * numVars ** 2, Q * numVars ** 2]).astype(int)
-    paramSplit = np.array_split(results.params, splitIndices)
+    # Solve for the mean and covariance of the state vector of the VARMAX model. This is used later
+    # to sample initial state values for the model in a way that we can control.
+    initMean, initCov = self._solveStateDistribution(model.ssm['transition'],
+                                                     model.ssm['state_intercept'],
+                                                     model.ssm['state_cov'],
+                                                     model.ssm['selection'])
+    initDist = self._trainMultivariateNormal(len(initMean), initMean, initCov)
 
     params = {}
-    params['VARMA'] = {'model': results,
+    params['VARMA'] = {'model': model,
                        'targets': targets,
-                       'const': paramSplit[0],
-                       'ar': paramSplit[1],
-                       'ma': paramSplit[2],
-                       'cov': paramSplit[3],
+                       'const': results.params[model._params_trend],
+                       'ar': results.params[model._params_ar],
+                       'ma': results.params[model._params_ma],
+                       'cov': results.params[model._params_state_cov],
                        'initDist': initDist,
-                       'noiseDist': stateDist}
+                       'noiseDist': stateDist,
+                       'resid': results.resid}
     return params
 
-  def _trainInitDist(self, ):
-    # train initial state sampler
-    ## Used to pick an initial state for the VARMA by sampling from the multivariate normal noise
-    #    and using the AR and MA initial conditions.  Implemented so we can control the RNG internally.
-    #    Implementation taken directly from statsmodels.tsa.statespace.kalman_filter.KalmanFilter.simulate
-    ## get mean
-    smoother = model.ssm
-    mean = np.linalg.solve(np.eye(smoother.k_states) - smoother['transition',:,:,0],
-                          smoother['state_intercept',:,0])
-    ## get covariance
-    r = smoother['selection',:,:,0]
-    q = smoother['state_cov',:,:,0]
-    selCov = r.dot(q).dot(r.T)
-    cov = solve_discrete_lyapunov(smoother['transition',:,:,0], selCov)
-    # FIXME it appears this is always resulting in a lowest-value initial state.  Why?
-    initDist = self._trainMultivariateNormal(len(mean), mean, cov)
-    return initDist
+  def _solveStateDistribution(self, transition, stateIntercept, stateCov, selection):
+    """
+      Determines the steady state mean vector and covariance matrix of a state space model
+        x_{t+1} = T x_t + R w_t + c
+      where x is the state vector, T is the transition matrix, R is the selection matrix,
+      w is the noise vector (w ~ N(0, Q) for state covariance matrix Q), and c is the state
+      intercept vector.
+
+      @ In, transition, np.array, transition matrix (T)
+      @ In, stateIntercept, np.array, state intercept vector (c)
+      @ In, stateCov, np.array, state covariance matrix (Q)
+      @ In, selection, np.array, selection matrix (R)
+      @ Out, mean, np.array, steady state mean vector
+      @ Out, cov, np.array, steady state covariance matrix
+    """
+    # The mean vector (m) solves the linear system (I - T) m = c
+    mean = np.linalg.solve(np.eye(transition.shape[0]) - transition, stateIntercept)
+    # The covariance matrix (C) solves the discrete Lyapunov equation C = T C T' + R Q R'
+    cov = sp.linalg.solve_discrete_lyapunov(transition, selection @ stateCov @ selection.T)
+    return mean, cov
 
   def _trainMultivariateNormal(self, dim, means, cov):
     """
@@ -208,7 +210,7 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
       @ In, settings, dict, additional settings specific to algorithm
       @ Out, residual, np.array, reduced signal shaped [pivotValues, targets]
     """
-    residual = params['VARMA']['model'].resid
+    residual = params['VARMA']['resid']
     return residual
 
   def getComposite(self, initial, params, pivot, settings):
@@ -237,7 +239,7 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
     """
     model = params['VARMA']['model']
     numSamples = len(pivot)
-    numVars = model.model.k_endog
+    numVars = model.k_endog
 
     # sample measure, state shocks
     measureShocks = np.zeros([numSamples, numVars])
@@ -248,13 +250,18 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
     stateShocks = np.array([noiseDist.rvs() for _ in range(numSamples)])
 
     # Load model params
+    modelParams = np.r_[params['VARMA']['const'],
+                        params['VARMA']['ar'],
+                        params['VARMA']['ma'],
+                        params['VARMA']['cov']]
 
     # pick an intial by sampling multinormal distribution
     init = np.array(initDist.rvs())
-    synthetic = model.model.simulate(numSamples,
-                                     initial_state=init,
-                                     measurement_shocks=measureShocks,
-                                     state_shocks=stateShocks)
+    synthetic = model.simulate(modelParams,
+                               numSamples,
+                               initial_state=init,
+                               measurement_shocks=measureShocks,
+                               state_shocks=stateShocks)
     return synthetic
 
   def getParamNames(self, settings):
@@ -293,10 +300,14 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
       @ Out, rlz, dict, realization-style response
     """
     rlz = {}
-    model = params['VARMA']['model']
+    paramNames = params['VARMA']['model'].param_names
+    modelParams = np.r_[params['VARMA']['const'],
+                        params['VARMA']['ar'],
+                        params['VARMA']['ma'],
+                        params['VARMA']['cov']]
     targetNames = params['VARMA']['targets']
 
-    for name, value in zip(model.param_names, model.params):
+    for name, value in zip(paramNames, modelParams):
       parts = name.split('.')  # e.g. 'intercept.y1', 'sqrt.var.y1', 'L1.y1.y1', 'L1.e(y1).y2', 'sqrt.cov.y1.y2'
       if parts[0] == 'intercept':
         target = targetNames[int(parts[1][1:]) - 1]
@@ -352,13 +363,13 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
             features[nameTemplate.format(target=target, metric='VARMA', id=f'cov_{target2}')] = paramValues[i*numVars+j]
       elif req == 'ar':  # ordered by target1, then lag, then target2
         for i, target in enumerate(data['targets']):
-          for p in range(model.model.k_ar):
+          for p in range(model.k_ar):
             for j, target2 in enumerate(data['targets']):
               features[nameTemplate.format(target=target, metric='VARMA', id=f'ar_{p+1}_{target2}')] \
                 = paramValues[p*numVars*numVars+i*numVars+j]
       elif req == 'ma':  # ordered by target1, then lag, then target2
         for i, target in enumerate(data['targets']):
-          for q in range(model.model.k_ma):
+          for q in range(model.k_ma):
             for j, target2 in enumerate(data['targets']):
               features[nameTemplate.format(target=target, metric='VARMA', id=f'ma_{q+1}_{target2}')] \
                 = paramValues[q*numVars*numVars+i*numVars+j]
@@ -373,8 +384,8 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
       @ Out, params, dict, updated parameter settings
     """
     targets = params['VARMA']['targets']
-    arOrder = params['VARMA']['model'].model.k_ar
-    maOrder = params['VARMA']['model'].model.k_ma
+    arOrder = params['VARMA']['model'].k_ar
+    maOrder = params['VARMA']['model'].k_ma
     numVars = len(targets)
 
     for target, identifier, value in fromCluster:
@@ -395,7 +406,38 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
         target2Index = targets.index(idSplit[2])
         params['VARMA']['ma'][targetIndex * numVars * maOrder + (lag - 1) * numVars + target2Index] = value
 
+    self._buildStateSpaceMatrices(params['VARMA'])
+
     return params
+
+  def _buildStateSpaceMatrices(self, params):
+    """
+      Builds the state space matrices for the ARMA model. Specifically, the transition, state intercept,
+      state covariance, and selection matrices are built.
+
+      @ In, params, dict, dictionary of trained model parameters
+      @ Out, transition, np.array, transition matrix
+      @ Out, stateIntercept, np.array, state intercept vector
+      @ Out, stateCov, np.array, state covariance matrix
+      @ Out, selection, np.array, selection matrix
+    """
+    # The state vector has dimension max(P, Q + 1)
+    P = len(params['ar'])
+    Q = len(params['ma'])
+    dim = max(P + Q, 1)
+    transition = np.eye(dim, k=1)
+    transition[:P, 0] = params['ar']
+    stateIntercept = np.zeros(dim)  # NOTE The state intercept vector handles the trend component of
+                                    # SARIMA models. We don't implement that for now so we set it to 0,
+                                    # but this may change in the future.
+    stateCov = np.atleast_2d(params['cov'])
+    print('JACOB DEBUG')
+    print(params['cov'])
+    print(params['model'].ssm['state_cov'])
+    print('END DEBUG')
+    raise ValueError
+    selection = params['model'].ssm['selection']
+    return transition, stateIntercept, stateCov, selection
 
   def writeXML(self, writeTo, params):
     """
