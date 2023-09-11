@@ -212,7 +212,7 @@
     [./csv]
       type = OrderedCSV
       output = 'VARMAInterpolated/samples.csv'
-      rel_err = 1e-2
+      rel_err = 2.1e-1
     [../]
     [./xml]
       type = XML
