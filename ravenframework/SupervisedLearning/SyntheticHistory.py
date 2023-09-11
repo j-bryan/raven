@@ -195,6 +195,18 @@ class SyntheticHistory(SupervisedLearning, TSAUser):
       features.update(algoFeatures)
     return features
 
+  def finalizeLocalRomSegmentEvaluation(self, settings, evaluation, globalPicker, localPicker=None):
+    """
+      Allows global settings in "settings" to affect a LOCAL evaluation of a LOCAL ROM
+      Note this is called on the LOCAL subsegment ROM and not the GLOBAL templateROM.
+      @ In, settings, dict, as from getGlobalRomSegmentSettings
+      @ In, evaluation, dict, preliminary evaluation from the local segment ROM as {target: [values]}
+      @ In, globalPicker, slice, indexer for data range of this segment FROM GLOBAL SIGNAL
+      @ In, localPicker, slice, optional, indexer for part of signal that should be adjusted IN LOCAL SIGNAL
+      @ Out, evaluation, dict, {target: np.ndarray} adjusted global evaluation
+    """
+    return evaluation
+
   def setLocalRomClusterFeatures(self, settings):
     """
       Forcibly set the parameters of this ROM based on those in "settings".
@@ -236,6 +248,9 @@ class SyntheticHistory(SupervisedLearning, TSAUser):
     if featureTemplate is None:
       featureTemplate = '{target}|{metric}|{id}' # TODO this kind of has to be the format currently
 
+    # TODO There are features that might not be clusterable but that are still important for interpolation/
+    # that are fundamental to the ROM in some form. This could be a good place to request those features
+    # in addition to the clusterable ones.
     requests = self._getClusterableFeatures()
     features = self.getLocalRomClusterFeatures(featureTemplate, {}, requests, picker=None)
 
