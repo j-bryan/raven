@@ -514,13 +514,13 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
     stateIntercept[:numVars] = params['const']
     # The state covariance matrix needs to be rebuilt from the transformed flat representation.
     stateCov = self._transformedFlatToCov(params['cov'])
-    
+
     # The selection matrix shouldn't need to change just because the model parameters have changed, so we
     # can copy the matrix from the existing model.
     selection = params['model'].ssm['selection']
 
     return transition, stateIntercept, stateCov, selection
-  
+
   def _covToTransformedFlat(self, cov):
     """
       Transforms a full covariance matrix into a flattened representation of the unique
@@ -540,7 +540,7 @@ class VARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer)
     # Extract the lower triangular portion of the matrix
     flat = log[np.tril_indices_from(log)]
     return flat
-  
+
   def _transformedFlatToCov(self, flat):
     """
       Transforms a flattened representation of the unique values of the matrix logarithm of the

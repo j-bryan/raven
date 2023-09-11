@@ -384,7 +384,7 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer):
       initMean, initCov = self._solveStateDistribution(transition, stateIntercept, stateCov, selection)
       params[target]['arma']['initials'] = {'mean': initMean, 'cov': initCov}
     return params
-  
+
   def _solveStateDistribution(self, transition, stateIntercept, stateCov, selection):
     """
       Determines the steady state mean vector and covariance matrix of a state space model
@@ -434,7 +434,7 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer):
   def _generateNoise(self, params, size):
     """
       Generates purturbations for ARMA sampling.
-      @ In, params, dict, dictionary of trained model parameters 
+      @ In, params, dict, dictionary of trained model parameters
       @ In, size, int, length of time-like variable
       @ Out, msrShocks, np.array, measurement shocks
       @ Out, stateShocks, np.array, state shocks
@@ -444,7 +444,7 @@ class ARMA(TimeSeriesGenerator, TimeSeriesCharacterizer, TimeSeriesTransformer):
     # note in statsmodels.tsa.statespace.kalman_filter, mean of measure shocks is 0s
     # NOTE (j-bryan, 8/30/2023): The observation covariance matrix (obs_cov) will always be zero for
     #   statsmodels.tsa.arima.model.ARIMA objects. That ARIMA class is a subclass of the statsmodels
-    #   SARIMAX class and always uses the default value of False for the measurement_error keyword 
+    #   SARIMAX class and always uses the default value of False for the measurement_error keyword
     #   argument for the SARIMAX class, forcing the observation covariance matrix to be zero. The
     #   sampling for the measurement shocks is left in for now in case a time where it is needed
     #   is identified and to keep the RNG samples consistent with the existing tests.
