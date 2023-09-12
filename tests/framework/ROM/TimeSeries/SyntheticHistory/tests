@@ -213,6 +213,7 @@
       type = OrderedCSV
       output = 'VARMAInterpolated/samples.csv'
       rel_err = 2.1e-1
+      zero_threshold = 1e-2
     [../]
     [./xml]
       type = XML

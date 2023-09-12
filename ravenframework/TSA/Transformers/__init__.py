@@ -23,7 +23,6 @@ Created May 25, 2023
 
 from .Filters import ZeroFilter
 from .FunctionTransformers import LogTransformer, ArcsinhTransformer, TanhTransformer, SigmoidTransformer, OutTruncation
-from .Differencing import Differencing
 from .Normalizers import MaxAbsScaler, MinMaxScaler, StandardScaler, RobustScaler
 from .Distributions import Gaussianize, QuantileTransformer, PreserveCDF, KDEGaussianize
 from .Differencing import Differencing

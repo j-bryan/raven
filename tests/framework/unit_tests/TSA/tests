@@ -28,18 +28,6 @@
     type = 'RavenPython'
     input = 'testNormalization.py'
   [../]
-  [./PreserveCDF]
-    type = 'RavenPython'
-    input = 'testPreserveCDF.py'
-  [../]
-  [./Differencing]
-    type = 'RavenPython'
-    input = 'testDifferencing.py'
-  [../]
-  [./STL]
-    type = 'RavenPython'
-    input = 'testSTL.py'
-  [../]
   [./Distributions]
     type = 'RavenPython'
     input = 'testDistributionTransformations.py'
