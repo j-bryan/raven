@@ -30,7 +30,7 @@ from .STL import STL
 from .Transformers import MaxAbsScaler, MinMaxScaler, StandardScaler, RobustScaler, \
                           LogTransformer, ArcsinhTransformer, TanhTransformer, SigmoidTransformer, \
                           QuantileTransformer, OutTruncation, ZeroFilter, PreserveCDF, Gaussianize, \
-                          Differencing
+                          Differencing, KDEGaussianize
 
 from .Factory import factory
 

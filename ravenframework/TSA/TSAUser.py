@@ -19,6 +19,7 @@ Contains a utility base class for accessing commonly-used TSA functions.
 """
 import numpy as np
 from inspect import isabstract
+from copy import deepcopy
 
 from ..utils import xmlUtils, InputData, InputTypes
 
@@ -69,6 +70,7 @@ class TSAUser:
     self._paramNames = None          # cached list of parameter names
     self._paramRealization = None    # cached dict of param variables mapped to values
     self._tsaTargets = None          # cached list of targets
+    self._tsaResiduals = {}          # cached residuals for each target
     self.target = None
 
   def readTSAInput(self, spec):
@@ -210,6 +212,7 @@ class TSAUser:
         algoResidual = algo.getResidual(signal, params, pivots, settings)
         residual[0, :, indices] = algoResidual.T # transpose, again because of indices
       # TODO meta store signal, residual?
+      self._tsaResiduals[algo.name] = deepcopy(residual)
 
   def evaluateTSASequential(self):
     """

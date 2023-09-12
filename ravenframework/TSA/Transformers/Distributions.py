@@ -20,6 +20,7 @@
 """
 
 import numpy as np
+import scipy as sp
 import sklearn.preprocessing as skl
 
 from ..TimeSeriesAnalyzer import TimeSeriesTransformer
@@ -70,6 +71,122 @@ class Gaussianize(SKLTransformer):
     if 'nQuantiles' not in settings:
       settings['nQuantiles'] = 1000
     return settings
+
+
+class KDEGaussianize(TimeSeriesTransformer):
+  @classmethod
+  def getInputSpecification(cls):
+    """
+      Method to get a reference to a class that specifies the input data for
+      class cls.
+      @ In, None
+      @ Out, specs, InputData.ParameterInput, class to use for
+        specifying input of cls.
+    """
+    specs = super().getInputSpecification()
+    specs.name = 'KDEGaussianize'
+    specs.description = r"""transforms the data into a normal distribution using quantile mapping."""
+    specs.addParam('bandwidth', param_type=InputTypes.FloatType,
+                   descr=r"""the bandwidth parameter for the kernel density estimator. If not provided,
+                   the Silverman rule of thumb is used.""", required=False)
+    specs.addParam('minimum', param_type=InputTypes.FloatType,
+                   descr=r"""the minimum value of the distribution.""", required=False)
+    specs.addParam('maximum', param_type=InputTypes.FloatType,
+                    descr=r"""the maximum value of the distribution.""", required=False)
+    return specs
+
+  def handleInput(self, spec):
+    """
+      Reads user inputs into this object.
+      @ In, spec, InputData.InputParams, input specifications
+      @ Out, settings, dict, initialization settings for this algorithm
+    """
+    settings = super().handleInput(spec)
+    settings['bandwidth'] = spec.parameterValues.get('bandwidth', None)
+    settings['minimum'] = spec.parameterValues.get('minimum', None)
+    settings['maximum'] = spec.parameterValues.get('maximum', None)
+    return settings
+
+  def setDefaults(self, settings):
+    """
+      Fills default values for settings with default values.
+      @ In, settings, dict, existing settings
+      @ Out, settings, dict, modified settings
+    """
+    if 'seed' not in settings:
+      settings['seed'] = None
+    return settings
+
+  def fit(self, signal, pivot, targets, settings):
+    """
+      Fits the algorithm/model using the provided time series ("signal") using methods specific to
+      the algorithm.
+      @ In, signal, np.array, time-dependent series
+      @ In, pivot, np.array, time-like parameter
+      @ In, targets, list(str), names of targets
+      @ In, settings, dict, additional settings specific to algorithm
+      @ Out, params, dict, characterization of signal; structure as:
+                           params[target variable][characteristic] = value
+    """
+    print('\n\n\n\nFitting KDE Transformer\n\n\n\n')
+    import statsmodels.api as sm
+
+    params = {}
+    for tg, target in enumerate(targets):
+      # kernel density estimation using statsmodels
+      kde = sm.nonparametric.KDEUnivariate(signal[:, tg])
+      kde.fit()
+      # Fit a monotonic cubic spline interpolation to the CDF values
+      # NOTE: these interpolators can't extrapolate well, but there should be enough
+      # buffer around the data in the interpolation to avoid that (the KDE interpolation
+      # usually covers >99.99% of the probability space)
+      cdf = sp.interpolate.PchipInterpolator(kde.support, kde.cdf)
+      icdf = sp.interpolate.PchipInterpolator(kde.cdf, kde.support)
+      params[target] = {'cdf': cdf, 'icdf': icdf}
+    return params
+
+  def getResidual(self, initial, params, pivot, settings):
+    """
+      Removes trained signal from data and find residual
+      @ In, initial, np.array, original signal shaped [pivotValues, targets], targets MUST be in
+                               same order as self.target
+      @ In, params, dict, training parameters as from self.characterize
+      @ In, pivot, np.array, time-like array values
+      @ In, settings, dict, additional settings specific to algorithm
+      @ Out, residual, np.array, reduced signal shaped [pivotValues, targets]
+    """
+    residual = initial.copy()
+    for tg, (target, data) in enumerate(params.items()):
+      residual[:, tg] = sp.stats.norm.ppf(data['cdf'](residual[:, tg]))
+    return residual
+
+  def getComposite(self, initial, params, pivot, settings):
+    """
+      Combines two component signals to form a composite signal. This is essentially the inverse
+      operation of the getResidual method.
+      @ In, initial, np.array, original signal shaped [pivotValues, targets], targets MUST be in
+                               same order as self.target
+      @ In, params, dict, training parameters as from self.characterize
+      @ In, pivot, np.array, time-like array values
+      @ In, settings, dict, additional settings specific to algorithm
+      @ Out, composite, np.array, resulting composite signal
+    """
+    composite = initial.copy()
+    for tg, (target, data) in enumerate(params.items()):
+      composite[:, tg] = data['icdf'](sp.stats.norm.cdf(composite[:, tg]))
+    return composite
+
+  def writeXML(self, writeTo, params):
+    """
+      Allows the engine to put whatever it wants into an XML to print to file.
+      @ In, writeTo, xmlUtils.StaticXmlElement, entity to write to
+      @ In, params, dict, trained parameters as from self.fit
+      @ Out, None
+    """
+    # Add model settings as subnodes to writeTO node
+    for target, info in params.items():
+      base = xmlUtils.newNode(target)
+      writeTo.append(base)
 
 
 class QuantileTransformer(Gaussianize):

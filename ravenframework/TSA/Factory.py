@@ -29,7 +29,7 @@ from .RWD import RWD
 from .STL import STL
 from .Transformers import ZeroFilter, LogTransformer, ArcsinhTransformer, TanhTransformer, SigmoidTransformer, \
                           OutTruncation, MaxAbsScaler, MinMaxScaler, StandardScaler, RobustScaler, \
-                          QuantileTransformer, Gaussianize, PreserveCDF, Differencing
+                          QuantileTransformer, Gaussianize, PreserveCDF, Differencing, KDEGaussianize
 
 factory = EntityFactory('TimeSeriesAnalyzer')
 # TODO map lower case to upper case, because of silly ROM namespace problems
