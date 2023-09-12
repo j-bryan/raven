@@ -31,7 +31,6 @@ from scipy.interpolate import interp1d
 # internal libraries
 from ..utils import utils, mathUtils, xmlUtils, randomUtils
 from ..utils import InputData, InputTypes
-from .. import Distributions
 from .SupervisedLearning import SupervisedLearning
 # import pickle as pk # TODO remove me!
 import os
