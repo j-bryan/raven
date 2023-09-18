@@ -128,7 +128,6 @@ class KDEGaussianize(TimeSeriesTransformer):
       @ Out, params, dict, characterization of signal; structure as:
                            params[target variable][characteristic] = value
     """
-    print('\n\n\n\nFitting KDE Transformer\n\n\n\n')
     import statsmodels.api as sm
 
     params = {}

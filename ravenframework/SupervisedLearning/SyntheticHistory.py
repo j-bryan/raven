@@ -284,6 +284,18 @@ class SyntheticHistory(SupervisedLearning, TSAUser):
     results = {}
     return results
 
+  def finalizeLocalRomSegmentEvaluation(self, settings, evaluation, globalPicker, localPicker=None):
+    """
+      Allows global settings in "settings" to affect a LOCAL evaluation of a LOCAL ROM
+      Note this is called on the LOCAL subsegment ROM and not the GLOBAL templateROM.
+      @ In, settings, dict, as from getGlobalRomSegmentSettings
+      @ In, evaluation, dict, preliminary evaluation from the local segment ROM as {target: [values]}
+      @ In, globalPicker, slice, indexer for data range of this segment FROM GLOBAL SIGNAL
+      @ In, localPicker, slice, optional, indexer for part of signal that should be adjusted IN LOCAL SIGNAL
+      @ Out, evaluation, dict, {target: np.ndarray} adjusted global evaluation
+    """
+    return evaluation
+
   ### ESSENTIALLY UNUSED ###
   def _localNormalizeData(self,values,names,feat):
     """

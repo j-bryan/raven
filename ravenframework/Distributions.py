@@ -3087,7 +3087,7 @@ class NDimensionalDistributions(Distribution):
     paramDict = super().getInitParams()
     paramDict['functionType'] = self.functionType
     paramDict['dataFilename'] = self.dataFilename
-    paramDict['workingDir'] = self.workingDir
+    paramDict['workingDir'] = os.getcwd() if not hasattr(self, 'workingDir') else self.workingDir
     return paramDict
 
   def _localSetState(self,pdict):
