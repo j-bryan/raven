@@ -164,7 +164,9 @@ class CrowRNG:
     return self._seed
 
 if stochasticEnv == 'numpy':
-  npStochEnv = np.random.default_rng()  # preferred constructor for creating a numpy.random.Generator() instance
+  _bitGenerator = np.random.MT19937()
+  _bitGenerator._legacy_seeding(5489)
+  npStochEnv = np.random.Generator(_bitGenerator)
 else:
   setupCpp()
   crowStochEnv = CrowRNG()
@@ -182,7 +184,9 @@ def setStochasticEnv(env):
   global stochasticEnv, npStochEnv, crowStochEnv, distStochEnv, boxMullerGen
   stochasticEnv = env
   if env == 'numpy':
-    npStochEnv = np.random.default_rng()
+    _bitGenerator = np.random.MT19937()
+    _bitGenerator._legacy_seeding(5489)
+    npStochEnv = np.random.Generator(_bitGenerator)
   else:
     setupCpp()
     crowStochEnv = CrowRNG()
@@ -216,7 +220,7 @@ def randomSeed(value, seedBoth=False, engine=None):
       engine = npStochEnv
 
   if isinstance(engine, np.random.Generator):
-    engine = np.random.default_rng(value)
+    engine.bit_generator._legacy_seeding(value)
   elif isinstance(engine, CrowRNG):
     engine.seed(value)
     if seedBoth:
@@ -238,7 +242,7 @@ def forwardSeed(count, engine):
   elif isinstance(engine, np.random.Generator):
     # throw away some random numbers to advance the state
     for _ in range(count):
-      engine.random()
+      engine.random(dtype=np.float32)
   else:
     raise TypeError(f'Unrecognized RNG type "{type(engine)}"')
 
@@ -255,7 +259,7 @@ def random(dim=1, samples=1, keepMatrix=False, engine=None):
   samples = int(samples)
   engine = getEngine(engine)
   if isinstance(engine, np.random.Generator):
-    vals = engine.random(size=(samples, dim))
+    vals = engine.random(size=(samples, dim), dtype=np.float32)
   else:
     vals = np.zeros([samples, dim])
     for i in range(len(vals)):
@@ -446,7 +450,9 @@ def newRNG(env=None):
   if env == 'crow':
     engine = CrowRNG()
   elif env == 'numpy':
-    engine = np.random.default_rng()
+    _bitGenerator = np.random.MT19937()
+    _bitGenerator._legacy_seeding(5489)
+    engine = np.random.Generator(_bitGenerator)
   return engine
 
 ### internal utilities ###
